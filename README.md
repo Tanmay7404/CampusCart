@@ -1,2 +1,0 @@
-# CampusCart
-Coding Club
