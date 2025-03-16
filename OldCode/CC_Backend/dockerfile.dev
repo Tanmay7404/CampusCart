@@ -1,0 +1,17 @@
+# FROM node:14-slim
+# RUN mkdir -p /usr/src/app
+# WORKDIR /usr/src/app
+# COPY ./package.json ./
+# RUN  npm install --only=production && npm cache clean --force && npm install -g typescript
+# COPY . /usr/src/app
+# RUN tsc
+# EXPOSE 8080
+# CMD ["npm", "run", "dev"]
+FROM node:14-slim
+RUN mkdir -p /usr/src/app
+WORKDIR /usr/src/app
+COPY package.json .
+RUN npm install
+COPY . .
+EXPOSE 8080
+CMD ["npm", "run", "debug"]

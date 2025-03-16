@@ -1,0 +1,101 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  fullName        String
+  permissionFlags Int
+  currrentLocation String?
+  phone_number    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now())
+  photo_link      String?
+  orders          Order[]
+  Reviews         Reviews[]
+  favouritesShops Shop[]
+  shopId          String?
+}
+
+model Order {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  total       Int
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  items       Item[]
+  isPayment   Boolean
+  isAccepted  Boolean
+  isDelivered Boolean
+  Bill        Bill?
+
+  @@unique([userId])
+  @@unique([id])
+}
+
+model Item {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now())
+  name        String
+  price       Int
+  rating      Int      @default(0)
+  vegOrNonVeg String   @default("veg") // veg or non-veg 
+  inStock     Boolean  @default(true)
+  image       String?  
+  order       Order?   @relation(fields: [orderId], references: [id])
+  orderId     String?
+  Shop        Shop     @relation(fields: [shopId], references: [id])
+  shopId      String
+  category    String
+  subCategory String?
+}
+
+model Shop {
+  id           String    @id @default(uuid())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  name         String
+  phone_number String
+  rating       Int?
+  description  String?
+  image        String?
+  Reviews      Reviews[]
+  menu         Item[]
+  favouritedBy User[]
+  category     String[]
+  subCategory  String?
+}
+
+model Reviews {
+  id           String   @id @default(uuid())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  customerName String
+  rating       Int
+  comment      String
+  shop         Shop     @relation(fields: [shopId], references: [id])
+  shopId       String   @unique
+  user         User     @relation(fields: [userId], references: [id])
+  userId       String
+}
+
+model Bill {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  total     Int
+  quantity  Int
+  order     Order    @relation(fields: [orderId], references: [id])
+  orderId   String   @unique
+}
