@@ -12,3 +12,19 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+model Order {
+  id      String   @id @default(cuid())
+  userId  String
+  shopId  String
+  items   String[]
+  total   Float
+  issue   Issue?   @relation(fields: [issueId], references: [id])
+  issueId String?  @unique
+}
+
+model Issue {
+  id          String @id @default(cuid())
+  description String
+  order       Order?
+}
