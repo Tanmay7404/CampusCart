@@ -1,6 +1,6 @@
 
 <h2 align="center">IIT GUWAHATI VIRTUAL QUEUE APPLICATION</h2>
-<h4 align="left">A React native based application with NodeJs server powered by PostgreSql database. The following repository is a showcasing for the project,The main repository is private for now. These are the some interfaces of the Application</h4>
+<h4 align="left">A React native based application with NodeJs server powered by MySql database. The following repository is a showcasing for the project,The main repository is private for now(Currently work is in progress on the new Backend and frontend folder). These are the some interfaces of the Application</h4>
 
 **A React-Node Based  Application**  
 
@@ -27,11 +27,7 @@
 
 ## Installation of the Project
 
-1. Clone the project by -  `git clone --recursive https://github.com/iks1/PickMeUp.git` to ensure it clones all the submodules as well.
-2. Go to the directory PickMeUp by -  `cd PickMeUp`
-3. To make sure the submodules are updated run the command -  `git submodule update --remote`
-4. Follow the next procedures to run the project in your local environment.
-
+1. Clone the project by -  `git clone https://github.com/Tanmay7404/CampusCart.git`.
 
 ## Running the Project
 
@@ -39,7 +35,7 @@
 
 In order to install all packages follow the steps below:
 
- 1. Move to <b> CampusCatalogue---Backend </b> folder
+ 1. Move to <b> OldCode/CC_Backend </b> folder
  2. To make sure you have the required npm version run -  `nvm use 18`
  3. If you don't have the desired version of node install it by -  `nvm install 18` and then run -  `nvm use 18`
  4. Then to install all the required packages run -  `npm install`
@@ -51,13 +47,13 @@ In order to install all packages follow the steps below:
 ### Steps To Set Up Frontend
  
  #### customer side
- 1. Move to <b> PickMeUp--Customer </b>
+ 1. Move to <b> OldCode/CC_Customer </b>
  2. `npm install`
  3. `npx expo start`
  4. To run the application install the Expo Go application from Play Store and scan the QR Code or run  it on emulator
 
  #### shopkeeper side
- 1. Move to <b> PickMeUp--Shopkeeper </b> and repeat the above process
+ 1. Move to <b> OldCode/CC_Shop </b> and repeat the above process
 
 
 ### Directory Structure
@@ -65,7 +61,7 @@ In order to install all packages follow the steps below:
 The following is a high-level overview of relevant files and folders.
 
 ```
-CampusCatalogue---Backend/
+OldCode/CC_Backend/
 ├── config/
 │   ├── default.js
 │   └── ...
@@ -89,7 +85,7 @@ CampusCatalogue---Backend/
 ├── package-lock.json
 └── package.json
 
-PickMeUp--Shopkeeper/
+OldCode/CC_Shop/
 ├── assets/
 │   └── ...
 ├── components/
@@ -113,7 +109,7 @@ PickMeUp--Shopkeeper/
 ├── package.json
 └── m-cli.config.js
 
-PickMeUp--Customer/
+OldCode/CC_Customer/
 ├── assets/
 │   └── ...
 ├── components/
