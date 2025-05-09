@@ -9,22 +9,42 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
-model Order {
-  id      String   @id @default(cuid())
-  userId  String
-  shopId  String
-  items   String[]
-  total   Float
-  issue   Issue?   @relation(fields: [issueId], references: [id])
-  issueId String?  @unique
+// model User {
+//   id        String   @id @default(cuid())
+//   name      String
+//   email     String   @unique
+//   password  String
+//   orders    Order[]
+//   createdAt DateTime @default(now())
+// }
+// model Shop {
+//   id        String   @id @default(cuid())
+//   name      String
+//   address   String
+//   orders    Order[]
+//   createdAt DateTime @default(now())
+// }
+
+model Orders {
+  id         String   @id @default(cuid())
+  userId     String
+  shopId     String
+  items      Json
+  total      Float
+  status     String
+  statusCode Int
+  roomId     String   @unique
+  createdAt  DateTime @default(now())
+  issue      Issue?   @relation(fields: [issueId], references: [id])
+  issueId    String?  @unique
 }
 
 model Issue {
   id          String @id @default(cuid())
   description String
-  order       Order?
+  order       Orders?
 }

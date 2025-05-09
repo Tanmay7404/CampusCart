@@ -5,9 +5,12 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 const shopkeeperSockets: { [key: string]: string } = {};
-const orderTimers: { [key: string]: NodeJS.Timeout } = {};
+const ordersTimers: { [key: string]: NodeJS.Timeout } = {};
 const paymentTimers: { [key: string]: NodeJS.Timeout } = {};
 const confirmPaymentTimers: { [key: string]: NodeJS.Timeout } = {};
+
+// send notifs and set orders status update on each event
+// room id stored on each orders (room_id = userId + shopkeeperId + socket.id)
 
 export const initializeSocket = (server: http.Server) => {
   const io = new Server(server, {
@@ -26,165 +29,221 @@ export const initializeSocket = (server: http.Server) => {
       console.log(`Shopkeeper registered: ${shopkeeperId} with socket ID: ${socket.id}`);
     });
 
-    // Handle order placement
-    socket.on('placeOrder', (order) => {
-      const roomId = `order_${order.userId}_${order.shopkeeperId}`; // Unique room ID
+    // store the orders here and send  
+    socket.on('placeOrder', async (orders) => {
+      const roomId = `orders_${orders.userId}_${orders.shopkeeperId}_${socket.id}`; // Unique room ID
       socket.join(roomId);
-      io.to(roomId).emit('orderPlaced', { order, roomId });
-      console.log(`Order placed: ${JSON.stringify(order)} in room: ${roomId}`);
+      io.to(roomId).emit('orderPlaced', { orders, roomId });
+      console.log(`order placed: ${JSON.stringify(orders)} in room: ${roomId}`);
+
+      await prisma.orders.create({
+        data: {
+          userId: orders.userId,
+          shopId: orders.shopkeeperId,
+          items: orders.items,
+          total: orders.total,
+          status: 'Placed', // Initial status
+          statusCode: 0,
+          roomId: roomId,
+        },
+      });
+     
       // Notify the shopkeeper to join the room
-      const shopkeeperSocketId = shopkeeperSockets[order.shopkeeperId];
+      const shopkeeperSocketId = shopkeeperSockets[orders.shopkeeperId];
       if (shopkeeperSocketId) {
-        io.to(shopkeeperSocketId).emit('joinRoom', { roomId });
+        const orderss = await prisma.orders.findMany({
+          where: { shopId: orders.shopkeeperId },
+          orderBy: { createdAt: 'desc' },
+        });
+        io.to(shopkeeperSocketId).emit('updateOrderList', orderss);
       }
 
       // start timer
-      const timerDuration = 60;
-      let remainingTime = timerDuration;
-      orderTimers[roomId] = setInterval(() => {
-        remainingTime -= 1;
-        io.to(roomId).emit('timerUpdate', { roomId, remainingTime });
+      const timerDuration = 60; // 60 seconds
 
-        if (remainingTime <= 0) {
-          clearInterval(orderTimers[roomId]);
-          delete orderTimers[roomId];
-          io.to(roomId).emit('orderRejected', { roomId, reason: 'Order timed out' });
-          console.log(`Order timed out: ${roomId}`);
-          io.to(roomId).emit('leaveRoom', { roomId });
-        }
-      }, 1000); // Update every second
+      ordersTimers[roomId] = setTimeout(async () => {
+        // Timer expired, reject the orders and add it to issues
+        delete ordersTimers[roomId];
+    
+        // Update the orders status to "Rejected"
+        const updatedorders = await prisma.orders.update({
+          where: { roomId: roomId },
+          data: { status: 'Rejected by shopkeeper', statusCode: 1 },
+        });
+    
+        // Add the orders to issues
+        const issue = await prisma.issue.create({
+          data: {
+            description: 'orders timed out',
+            order: { connect: { id: updatedorders.id } },
+          },
+        });
+        console.log(`orders rejected and added to issues: ${JSON.stringify(issue)}`);
+
+        // Notify the user and shopkeeper
+        io.to(roomId).emit('orderRejected', { roomId, reason: 'orders timed out' });
+        io.to(roomId).emit('leaveRoom', { roomId });
+      }, 1000*timerDuration);// Update every second
     });
 
     // Handle shopkeeper joining the room
-    socket.on('joinRoom', (data) => {
-      const { roomId } = data;
+    socket.on('joinRoom',async (data) => {
+      const roomId = data.roomId;
+      const shopkeeperSocketId = shopkeeperSockets[data.shopkeeperId];
       socket.join(roomId);
+      const orders = await prisma.orders.findUnique({
+        where: { roomId: roomId }
+      })
+      if (orders) {
+        const startTime = new Date(orders.createdAt).getTime();
+        const currentTime = new Date().getTime();
+        const timerLeft = Math.floor((currentTime - startTime) / 1000);
+        io.to(shopkeeperSocketId).emit('orderTimerUpdate', {timerLeft});
+      }
       console.log(`Shopkeeper joined room: ${roomId}`);
     });
 
-    // Handle order acceptance
-    socket.on('acceptOrder', (data) => {
+    // Handle orders acceptance
+    socket.on('acceptOrder', async (data) => {
+
       const roomId = data.roomId;
-      clearInterval(orderTimers[roomId]); // Clear the timer if the order is accepted
-      delete orderTimers[roomId];
+
+      clearTimeout(ordersTimers[roomId]); // Clear the timer if the orders is accepted
+      delete ordersTimers[roomId];
+
+      await prisma.orders.update({
+        where: { roomId: roomId },
+        data: { status: 'Accepted', statusCode: 2 },
+      });
+
       io.to(roomId).emit('orderAccepted', data);
-      console.log(`Order accepted: ${JSON.stringify(data)} in room: ${roomId}`);
+      console.log(`orders accepted: ${JSON.stringify(data)} in room: ${roomId}`);
 
       // Start a payment timer for the user
       const paymentTimerDuration = 60; // 60 seconds
-      let paymentRemainingTime = paymentTimerDuration;
-      paymentTimers[roomId] = setInterval(() => {
-        paymentRemainingTime -= 1;
-        io.to(roomId).emit('paymentTimerUpdate', { roomId, paymentRemainingTime });
+      
+      paymentTimers[roomId] = setTimeout(async () => {
+        // Timer expired, reject the orders and add it to issues
+        delete paymentTimers[roomId];
 
-        if (paymentRemainingTime <= 0) {
-          clearInterval(paymentTimers[roomId]);
-          delete paymentTimers[roomId];
-          io.to(roomId).emit('orderRejected', { roomId, reason: 'Payment timed out' });
-          console.log(`Payment timed out: ${roomId}`);
-          io.to(roomId).emit('leaveRoom', { roomId });
-        }
-      }, 1000); // Update every second
+        // Update the orders status to "Rejected"
+        const updatedorders = await prisma.orders.update({
+          where: { roomId: roomId },
+          data: { status: 'Rejected by User', statusCode: 3 },
+        });
+        // Add the orders to issues
+        const issue = await prisma.issue.create({
+          data: {
+            description: 'Payment timed out',
+            order: { connect: { id: updatedorders.id } },
+          },
+        });
+        console.log(`orders rejected and added to issues: ${JSON.stringify(issue)}`);
+
+        // Notify the user and shopkeeper
+        io.to(roomId).emit('orderRejected', { roomId, reason: 'Payment timed out' });
+        io.to(roomId).emit('leaveRoom', { roomId });
+
+      }, 1000*paymentTimerDuration); // Update every second
     });
 
     // Handle payment
-    socket.on('makePayment', (data) => {
-      const order = data.order;
+    socket.on('makePayment', async (data) => {
       const roomId = data.roomId;
-      clearInterval(paymentTimers[roomId]); // Clear the timer if the payment is made
+
+      await prisma.orders.update({
+        where: { roomId: roomId },
+        data: { status: 'Payment made, awaiting confirmation', statusCode: 4 },
+      });
+      clearTimeout(paymentTimers[roomId]); // Clear the timer if the payment is made
       delete paymentTimers[roomId];
+
       io.to(roomId).emit('paymentMade', data);
+
       console.log(`Payment made: ${JSON.stringify(data)} in room: ${roomId}`);
 
       // Start a confirmation timer for the shopkeeper
       const confirmPaymentTimerDuration = 60; // 60 seconds
-      let confirmPaymentRemainingTime = confirmPaymentTimerDuration;
-      confirmPaymentTimers[roomId] = setInterval(async () => {
-        confirmPaymentRemainingTime -= 1;
-        io.to(roomId).emit('confirmPaymentTimerUpdate', { roomId, confirmPaymentRemainingTime });
 
-        if (confirmPaymentRemainingTime <= 0) {
-          clearInterval(confirmPaymentTimers[roomId]);
-          delete confirmPaymentTimers[roomId];
-          // add it to issues as user might have paid but shopkeeper didn't confirm
-          const createdOrder = await prisma.order.create({
-            data: {
-              userId: order.userId,
-              shopId: order.shopkeeperId,
-              items: order.items,
-              total: order.total
-            },
-          });
+      confirmPaymentTimers[roomId] = setTimeout(async () => {
+        // Timer expired, reject the orders and add it to issues
+        delete confirmPaymentTimers[roomId];
+        // Update the orders status to "Rejected"
+        const updatedorders = await prisma.orders.update({
+          where: { roomId: roomId },
+          data: { status: 'Rejected by shopkeeper', statusCode: 5 },
+        });
+        // Add the orders to issues
+        const issue = await prisma.issue.create({
+          data: {
+            description: 'Payment confirmation timed out',
+            order: { connect: { id: updatedorders.id } },
+          },
+        });
+        console.log(`orders rejected and added to issues: ${JSON.stringify(issue)}`);
 
-          console.log(`Order created: ${JSON.stringify(createdOrder)}`);
-
-          const issue = await prisma.issue.create({
-            data: {
-              description: 'Shopkeeper did not confirm payment',
-              order: {
-                connect: {
-                  id: createdOrder.id
-                }
-              },
-            }
-          });
-
-          console.log(`Issue created: ${JSON.stringify(issue)}`);
-
-          io.to(roomId).emit('orderRejected', { roomId, reason: 'Payment confirmation timed out' });
-          console.log(`Payment confirmation timed out: ${roomId}`);
-          io.to(roomId).emit('leaveRoom', { roomId });
-        }
-      }, 1000); // Update every second
+        // Notify the user and shopkeeper
+        io.to(roomId).emit('orderRejected', { roomId, reason: 'Payment confirmation timed out' });
+        io.to(roomId).emit('leaveRoom', { roomId });
+      }, 1000*confirmPaymentTimerDuration); // Update every second
     });
 
     // Handle payment confirmation
-    socket.on('confirmPayment', (data) => {
+    socket.on('confirmPayment', async (data) => {
       const roomId = data.roomId;
-      clearInterval(confirmPaymentTimers[roomId]); // Clear the timer if the payment is confirmed
+
+      clearTimeout(confirmPaymentTimers[roomId]); // Clear the timer if the payment is confirmed
       delete confirmPaymentTimers[roomId];
+
+      await prisma.orders.update({
+        where: { roomId: roomId },
+        data: { status: 'Payment confirmed by shopkeeper, preparing orders', statusCode: 6 },
+      });
+
       io.to(roomId).emit('paymentConfirmed', data);
+
       console.log(`Payment confirmed: ${JSON.stringify(data)} in room: ${roomId}`);
     });
 
-    // Handle order rejection
-    socket.on('rejectOrder', (data) => {
+    // Handle orders rejection
+    socket.on('rejectOrder', async (data) => {
       const roomId = data.roomId;
-      clearInterval(paymentTimers[roomId]); // Clear the payment timer if the order is rejected
+      clearTimeout(paymentTimers[roomId]); // Clear the payment timer if the orders is rejected
       delete paymentTimers[roomId];
+
+      // orders rejected update the orders status to "Rejected"
+      await prisma.orders.update({
+        where: { roomId: roomId },
+        data: { status: 'Rejected by User', statusCode: 7 },
+      });
+      
       io.to(roomId).emit('orderRejected', data);
-      console.log(`Order rejected: ${JSON.stringify(data)} in room: ${roomId}`);
+      console.log(`orders rejected: ${JSON.stringify(data)} in room: ${roomId}`);
 
       io.to(roomId).emit('leaveRoom', { roomId });
     });
 
-    // Handle order delivery
+    // Handle orders delivery
     socket.on('orderDelivered', async (data) => {
-      const order = data.order;
       const roomId = data.roomId;
-      console.log('Room id', roomId);
-      console.log('Order delivered:', order);
 
-      const createdOrder = await prisma.order.create({
-        data: {
-          userId: order.userId,
-          shopId: order.shopkeeperId,
-          items: order.items,
-          total: order.total,
-          issueId: null
-        },
+      const updatedorders = await prisma.orders.update({
+        where: { roomId: roomId },
+        data: { status: 'Delivered', statusCode: 8 },
       });
-      console.log(`Order created: ${JSON.stringify(createdOrder)}`);
+
+      console.log('Room id', roomId);
+      console.log('orders delivered:', updatedorders);
 
       io.to(roomId).emit('orderDelivered', data);
-      console.log(`Order delivered: ${JSON.stringify(data)} in room: ${roomId}`);
+      console.log(`orders delivered: ${JSON.stringify(data)} in room: ${roomId}`);
 
       io.to(roomId).emit('leaveRoom', { roomId });
     });
 
     // Handle leaving the room
     socket.on('leaveRoom', (data) => {
-      const { roomId } = data;
+      const roomId = data.roomId;
       socket.leave(roomId);
       console.log(`Socket left room: ${roomId}`);
       socket.disconnect();

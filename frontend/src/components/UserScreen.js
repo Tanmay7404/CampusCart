@@ -9,7 +9,7 @@ const UserScreen = () => {
   const [isMakePaymentDisabled, setMakePaymentDisabled] = useState(true);
   const [isRejectOrderDisabled, setRejectOrderDisabled] = useState(true);
   const [isOrderDeliveredDisabled, setOrderDeliveredDisabled] = useState(true);
-  const [paymentTimeRemaining, setPaymentTimeRemaining] = useState(null);
+  const [frontendTimer, setFrontendTimer] = useState(null);
   const [order, setOrder] = useState(null);
 
   useEffect(() => {
@@ -22,11 +22,8 @@ const UserScreen = () => {
     socket.on('orderAccepted', (data) => {
       console.log('Order accepted:', data);
       setMakePaymentDisabled(false);
+      startFrontendTimer(60);
       setRejectOrderDisabled(false);
-    });
-
-    socket.on('paymentTimerUpdate', (data) => {
-      setPaymentTimeRemaining(data.paymentRemainingTime);
     });
 
     socket.on('paymentConfirmed', (data) => {
@@ -36,6 +33,12 @@ const UserScreen = () => {
 
     socket.on('leaveRoom', (data) => {
       const { roomId } = data;
+      setRoomId(null);
+      setOrder(null);
+      setMakePaymentDisabled(true);
+      setRejectOrderDisabled(true);
+      setOrderDeliveredDisabled(true);
+      setPlaceOrderDisabled(false);
       socket.emit('leaveRoom', { roomId });
       console.log(`Left room: ${roomId}`);
     });
@@ -48,6 +51,23 @@ const UserScreen = () => {
       socket.off('leaveRoom');
     };
   }, []);
+
+  const startFrontendTimer = (duration) => {
+    setFrontendTimer(duration);
+    const timerInterval = setInterval(() => {
+      setFrontendTimer((prevTime) => {
+        if (prevTime <= 1) {
+          clearInterval(timerInterval);
+          return 0;
+        }
+        return prevTime - 1;
+      });
+    }, 1000);
+  };
+
+  const stopFrontendTimer = () => {
+    setFrontendTimer(null);
+  };
 
   const placeOrder = () => {
     // we get this order from frontend
@@ -64,33 +84,29 @@ const UserScreen = () => {
   const makePayment = () => {
     socket.emit('makePayment', { roomId, order });
     setMakePaymentDisabled(true);
+    stopFrontendTimer();
     setRejectOrderDisabled(true);
-    setPaymentTimeRemaining(null);
+    // setPaymentTimeRemaining(null);
   };
 
   const rejectOrder = () => {
     socket.emit('rejectOrder', { roomId });
     setMakePaymentDisabled(true);
+    stopFrontendTimer();
     setRejectOrderDisabled(true);
-    setPaymentTimeRemaining(null)
+    // setPaymentTimeRemaining(null)
   };
 
   const orderDelivered = async () => {
     // save the order object in prisma 
     socket.emit('orderDelivered', { roomId, order });
     setOrderDeliveredDisabled(true);
-    // try {
-    //   const response  = await axios.post('http://localhost:8080/api/deliverOrder', { order });
-    //   console.log('Order delivered:', response.data);
-    // } catch (error) {
-    //   console.error('Error delivering order:', error);
-    // }
   };
 
   return (
     <div>
       <h1>User Screen</h1>
-      {paymentTimeRemaining !== null && <p>Time remaining to make payment: {paymentTimeRemaining} seconds</p>}
+      {frontendTimer !== null && <p>Time remaining to make payment: {frontendTimer} seconds</p>}
       <button onClick={placeOrder} disabled={isPlaceOrderDisabled}>Place Order</button>
       <button onClick={makePayment} disabled={isMakePaymentDisabled}>Make Payment</button>
       <button onClick={rejectOrder} disabled={isRejectOrderDisabled}>Reject Order</button>

@@ -1,8 +1,10 @@
 import express from 'express';
-import { deliverOrder } from './orderController';
+import { getOrdersForShopkeeper } from './orderController';
 
 const router = express.Router();
 
-router.post('/deliverOrder', deliverOrder);
+// router.post('/deliverOrder', deliverOrder);
+
+router.get('/shopkeeper/:shopkeeperId/orders', getOrdersForShopkeeper);
 
 export default router;
