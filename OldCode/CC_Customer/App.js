@@ -45,6 +45,48 @@ import {store} from './store';
 export default function App() {
   // const navigation = useNavigation()
   const Stack = createNativeStackNavigator();
+
+
+  useEffect(() => {
+
+    firebase.initializeApp(firebaseConfig)
+    getToken();
+  }, []);
+
+  // async function requestUserPermission() {
+  //   // const granted = await AsyncStorage.getItem('notificationPermission');
+  //   // if (granted === 'true') {
+  //   //   console.log('Permission already granted');
+  //   //   return;
+  //   // }
+
+  //   const authStatus = await messaging().requestPermission();
+  //   const enabled =
+  //     authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+  //     authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+
+  //   if (enabled) {
+  //     console.log('Authorization status:', authStatus);
+  //     // await AsyncStorage.setItem('notificationPermission', 'true');
+  //   } else {
+  //     console.log('Notification permission denied.');
+  //   }
+  // }
+
+  async function getToken() {
+    try {
+      const token = await messaging().getToken();
+      console.log('📲 FCM Token:', token);
+
+      // Send token to your backend
+      // await axios.post('https://your-backend.com/save-fcm-token', {
+      //   email: userEmail, // Replace with actual user email
+      //   fcmToken: token
+      // });
+    } catch (error) {
+      console.error('❌ Error getting FCM token:', error);
+    }
+  }
   //Deep linking
   const LinkingOptions = {
     prefixes: ['campuscart://'], // Use the URL scheme you configured in Xcode
